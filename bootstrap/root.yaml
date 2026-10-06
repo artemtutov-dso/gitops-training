@@ -1,20 +1,20 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: hello-app
+  name: root
   namespace: argocd
 spec:
-  project: hello-app
+  project: default
   source:
     repoURL: https://github.com/artemtutov-dso/gitops-training.git
     targetRevision: HEAD
-    path: apps/hello-app
+    path: argocd
+    directory:
+      recurse: true
   destination:
     server: https://kubernetes.default.svc
-    namespace: hello-app
+    namespace: argocd
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
-    syncOptions:
-      - CreateNamespace=true
