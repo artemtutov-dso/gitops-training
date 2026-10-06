@@ -4,6 +4,8 @@ metadata:
   name: hello-app
   labels:
     app.kubernetes.io/name: hello-app
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
 spec:
   replicas: 3
   selector:
