@@ -4,7 +4,7 @@ metadata:
   name: hello-app
   namespace: argocd
 spec:
-  project: default
+  project: hello-app
   source:
     repoURL: https://github.com/artemtutov-dso/gitops-training.git
     targetRevision: HEAD

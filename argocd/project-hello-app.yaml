@@ -1,0 +1,21 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: hello-app
+  namespace: argocd
+spec:
+  description: Project for the hello-app placeholder application
+  sourceRepos:
+    - https://github.com/artemtutov-dso/gitops-training.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: hello-app
+  # Needed for the CreateNamespace=true sync option
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+  namespaceResourceWhitelist:
+    - group: apps
+      kind: Deployment
+    - group: ''
+      kind: Service
