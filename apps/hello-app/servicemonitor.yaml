@@ -1,0 +1,18 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hello-app
+  namespace: hello-app
+  labels:
+    app.kubernetes.io/name: hello-app
+    release: prometheus        # Prometheus from kube-prometheus-stack only selects this label
+  annotations:
+    argocd.argoproj.io/sync-wave: "20"   # after Deployment (10)
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hello-app
+  endpoints:
+    - port: http               # Service port NAME, not number
+      path: /metrics
+      interval: 15s
