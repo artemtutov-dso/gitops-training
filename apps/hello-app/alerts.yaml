@@ -1,0 +1,129 @@
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: hello-app-alerts
+  namespace: hello-app
+  labels:
+    release: prometheus
+  annotations:
+    argocd.argoproj.io/sync-wave: "25"
+spec:
+  groups:
+    - name: hello-app.golden-signals
+      rules:
+
+        # --- 1. Latency -------------------------------------------------------
+
+        - alert: HelloAppHighLatencyP95
+          expr: |
+            histogram_quantile(
+              0.95,
+              sum by (le) (rate(http_request_duration_seconds_bucket{namespace="hello-app"}[5m]))
+            ) > 1
+          for: 5m
+          labels:
+            severity: warning
+            signal: latency
+          annotations:
+            summary: "hello-app: p95 latence přes 1 s"
+            description: "p95 latence je {{ $value | humanizeDuration }} (práh 1 s) po dobu 5 minut."
+            runbook: "2runbook.md, sekce 5 (Troubleshooting)"
+
+        # --- 2. Traffic -------------------------------------------------------
+
+        # Propad provozu o více než polovinu oproti stejné době před hodinou.
+        # Druhá podmínka brání alertu u aplikace, která nemá žádný provoz.
+        - alert: HelloAppTrafficDrop
+          expr: |
+            sum(rate(http_requests_total{namespace="hello-app"}[5m]))
+              < 0.5 * sum(rate(http_requests_total{namespace="hello-app"}[5m] offset 1h))
+            and
+            sum(rate(http_requests_total{namespace="hello-app"}[5m] offset 1h)) > 0.1
+          for: 10m
+          labels:
+            severity: warning
+            signal: traffic
+          annotations:
+            summary: "hello-app: provoz klesl o více než 50 %"
+            description: "Aktuálně {{ $value | humanize }} req/s. Zkontroluj Service endpointy a upstream."
+            runbook: "2runbook.md, sekce 5.1 (Služba neodpovídá)"
+
+        # --- 3. Errors --------------------------------------------------------
+
+        - alert: HelloAppHighErrorRate
+          expr: |
+            sum(rate(http_requests_total{namespace="hello-app", code=~"5.."}[5m]))
+              /
+            sum(rate(http_requests_total{namespace="hello-app"}[5m]))
+              > 0.05
+          for: 5m
+          labels:
+            severity: warning
+            signal: errors
+          annotations:
+            summary: "hello-app: chybovost přes 5 %"
+            description: "Podíl odpovědí 5xx je {{ $value | humanizePercentage }} (práh 5 %) po dobu 5 minut."
+            runbook: "2runbook.md, sekce 5 (Troubleshooting)"
+
+        - alert: HelloAppCriticalErrorRate
+          expr: |
+            sum(rate(http_requests_total{namespace="hello-app", code=~"5.."}[5m]))
+              /
+            sum(rate(http_requests_total{namespace="hello-app"}[5m]))
+              > 0.25
+          for: 5m
+          labels:
+            severity: critical
+            signal: errors
+          annotations:
+            summary: "hello-app: každý čtvrtý request selhává"
+            description: "Podíl odpovědí 5xx je {{ $value | humanizePercentage }} (práh 25 %). Zvaž rollback v Gitu."
+            runbook: "2runbook.md, sekce 4.3 (Rollback)"
+
+        # --- 4. Saturation ----------------------------------------------------
+
+        # Chytí scénář C dřív, než začne OOMKill
+        - alert: HelloAppMemoryNearLimit
+          expr: |
+            sum by (pod, container) (
+              container_memory_working_set_bytes{namespace="hello-app", container="hello-app"}
+            )
+              /
+            sum by (pod, container) (
+              kube_pod_container_resource_limits{namespace="hello-app", container="hello-app", resource="memory"}
+            )
+              > 0.9
+          for: 10m
+          labels:
+            severity: warning
+            signal: saturation
+          annotations:
+            summary: "{{ $labels.pod }}: paměť se blíží limitu"
+            description: "Využití je {{ $value | humanizePercentage }} limitu paměti (práh 90 %). Hrozí OOMKill."
+            runbook: "2runbook.md, sekce 5.2 (CrashLoopBackOff)"
+
+        - alert: HelloAppOOMKilled
+          expr: |
+            kube_pod_container_status_last_terminated_reason{namespace="hello-app", reason="OOMKilled"} == 1
+            and on (namespace, pod, container)
+            increase(kube_pod_container_status_restarts_total{namespace="hello-app"}[10m]) > 0
+          labels:
+            severity: critical
+            signal: saturation
+          annotations:
+            summary: "{{ $labels.pod }}: kontejner byl OOMKilled"
+            description: "Kontejner byl v posledních 10 minutách restartován kvůli paměti. Zvyš limits.memory v Gitu."
+            runbook: "2runbook.md, sekce 5.2 (CrashLoopBackOff)"
+
+        - alert: HelloAppPodRestartingTooOften
+          expr: |
+            increase(kube_pod_container_status_restarts_total{namespace="hello-app"}[1h]) > 3
+          for: 5m
+          labels:
+            severity: warning
+            signal: saturation
+          annotations:
+            summary: "{{ $labels.pod }}: časté restarty"
+            description: "{{ $value | humanize }} restartů za poslední hodinu (práh 3)."
+            runbook: "2runbook.md, sekce 5.2 (CrashLoopBackOff)"
